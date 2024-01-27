@@ -1,0 +1,11 @@
+﻿  main_teste2.cpp
+C:\Users\harri\Documents\Visual studio projects\FaceH_C_2\FaceH\main_teste2.cpp(291,38): warning C4244: 'inicializando': conversão de 'int' para 'float', possível perda de dados
+C:\Users\harri\Documents\Visual studio projects\FaceH_C_2\FaceH\main_teste2.cpp(292,38): warning C4244: 'inicializando': conversão de 'int' para 'float', possível perda de dados
+C:\Users\harri\Documents\Visual studio projects\FaceH_C_2\FaceH\main_teste2.cpp(294,38): warning C4244: 'inicializando': conversão de 'int' para 'float', possível perda de dados
+C:\Users\harri\Documents\Visual studio projects\FaceH_C_2\FaceH\main_teste2.cpp(295,38): warning C4244: 'inicializando': conversão de 'int' para 'float', possível perda de dados
+C:\Users\harri\Documents\Visual studio projects\FaceH_C_2\FaceH\main_teste2.cpp(297,67): warning C4244: '=': conversão de 'double' para 'float', possível perda de dados
+  Gerando código
+  Previous IPDB not found, fall back to full compilation.
+  All 882 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finalizada a geração de código
+  FaceH.vcxproj -> C:\Users\harri\Documents\Visual studio projects\FaceH_C_2\x64\Release\FaceH.exe
