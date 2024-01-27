@@ -22,6 +22,11 @@
 
 
 
+struct Recorrencia {
+    std::vector<int> classificacoes;
+    std::vector<int> qtdVezes;
+};
+
 struct Box {
     int startX;
     int startY;
@@ -49,9 +54,14 @@ struct Deteccao {
     struct Box box;
     std::vector<Previsao>previsoes;
     std::vector<cv::Mat> deteccoes;
+    struct Pessoa pessoa;
     float distancia;
     int qtdFrames;
+    int esperando;
 };
+
+
+
 
 
 using std::cout;
@@ -73,36 +83,46 @@ bool validaDeteccao(Deteccao deteccao, float confiancaMinima, int larguraIdeal, 
 void mostrarPessoaDetectada(Pessoa pessoaMaisProxima, Deteccao deteccao);
 vector<Deteccao> calculaDistanciaDeteccaoParaDeteccoesGlobais(vector<Deteccao> deteccoesGlobais, Deteccao deteccao);
 Deteccao getDeteccaoMaisProxima(vector<Deteccao> deteccoesGlobais);
+vector<Deteccao> validaDeteccaoMaisProxima(vector<Deteccao>deteccoesGlobais, Deteccao deteccaoMaisProxima, Deteccao deteccaoAtual);
+vector<int> retornaPrevisoes(Deteccao deteccaoGlobal);
+Recorrencia getRecorrenciasDeClassificacao(vector<int>previsoes);
+int getIndexDaClassificacaoMaisRecorrente(Recorrencia recorrencia);
+Pessoa getPessoaPelaClassificacao(Recorrencia recorrencia, int indexMaior);
+void escreveNome(Deteccao deteccao, InputOutputArray frame);
 
 
 //Variáveis globais
-extern const int tempoDeCadastro = 10;
-extern const int opcao = 0;
-extern const std::string nome = "";
-extern const bool continuaGravacao = true;
-extern const int fps = 60;
-extern const int larguraIdeal = 130;
-extern const int alturaIdeal = 180;
-extern const float confiancaMinimaDeteccao = 0.9f;
+const int tempoDeCadastro = 10;
+const int opcao = 0;
+const std::string nome = "";
+const bool continuaGravacao = true;
+const int fps = 60;
+const int larguraIdeal = 130;
+const int alturaIdeal = 180;
+const float confiancaMinimaDeteccao = 0.9f;
+const float confiancaMinimaDaPrevisao = 0.8;
+const int qtdDeDeteccoesPorCluster = 15;
+
+
 
 
 //Pastas
-extern const std::string modeloSSDPath = "modelo_ssd";
-extern const std::string pessoasCadastradasPath = "pessoas_cadastradas";
-extern const std::string facesPath = "faces";
-extern const std::string modelosYmlPath = "modelos";
+const std::string modeloSSDPath = "modelo_ssd";
+const std::string pessoasCadastradasPath = "pessoas_cadastradas";
+const std::string facesPath = "faces";
+const std::string modelosYmlPath = "modelos";
 
 
 //Modelos
-extern const std::string arquivo_modelo = "modelo_ssd\\res10_300x300_ssd_iter_140000.caffemodel";
-extern const std::string arquivo_prototxt = "modelo_ssd\\deploy.prototxt.txt";
-extern const cv::dnn::Net network = cv::dnn::readNetFromCaffe(arquivo_prototxt, arquivo_modelo);
+const std::string arquivo_modelo = "modelo_ssd\\res10_300x300_ssd_iter_140000.caffemodel";
+const std::string arquivo_prototxt = "modelo_ssd\\deploy.prototxt.txt";
+const cv::dnn::Net network = cv::dnn::readNetFromCaffe(arquivo_prototxt, arquivo_modelo);
 
 
 //Caminhos
-extern const std::string arquivoGravacao = "pessoas_cadastradas\\pessoas.txt";
-extern const std::string arquivoId = "pessoas_cadastradas\\ultimoId.txt";
-extern const std::string modeloYml = modelosYmlPath + "\\" + "modelo_LBPH.yml";
+const std::string arquivoGravacao = "pessoas_cadastradas\\pessoas.txt";
+const std::string arquivoId = "pessoas_cadastradas\\ultimoId.txt";
+const std::string modeloYml = modelosYmlPath + "\\" + "modelo_LBPH.yml";
 
 
 vector<Deteccao> ultimasDeteccoes;
@@ -288,30 +308,12 @@ int main()
 
                         //calcula a deteção com a menor distância
                         //dgi = deteccoes globais index   
-                        struct Deteccao deteccaoMaisProxima = getDeteccaoMaisProxima(deteccoesGlobais);
-
+                        Deteccao deteccaoMaisProxima = getDeteccaoMaisProxima(deteccoesGlobais);
 
 
                         //Verifica se realmente a deteção mais próxima está em uma proximidade aceitável.
                         //Caso não esteja a deteção é então acoplada a lista deteccaoMaisProxima
-                        if (deteccaoMaisProxima.distancia < 20 && deteccaoMaisProxima.distancia != -1) {
-                            
-                            for (int dgi = 0; dgi < deteccoesGlobais.size(); dgi++) {
-
-                                if (deteccoesGlobais[dgi].idDeteccao == deteccaoMaisProxima.idDeteccao) {
-                                    
-                                    //Atribui o rosto a detecção que esta na lista de deteccoesGlobais
-                                    //E também é atualizado a posição atual do rosto
-                                    deteccoesGlobais[dgi].deteccoes.push_back(deteccaoMaisProxima.deteccoes[0]);
-                                    deteccoesGlobais[dgi].box = deteccoes[i].box;
-                                }
-                            }                            
-                        }
-                        else {
-                            
-                            deteccaoMaisProxima.idDeteccao = deteccoesGlobais[deteccoesGlobais.size() - 1].idDeteccao + 1;
-                            deteccoesGlobais.push_back(deteccaoMaisProxima);
-                        }
+                        deteccoesGlobais = validaDeteccaoMaisProxima(deteccoesGlobais,deteccaoMaisProxima,deteccoes[i]);                        
 
 
 
@@ -326,93 +328,26 @@ int main()
 
                             //Quando o objeto detecção atinge 15 imagens do rosto, então é realizado o algoritmo para
                             //fazer a previsão de todos as 15 imagens e definir qual é a pessoa prevista para aquela detecção.
-                            if (deteccoesGlobais[dgi].deteccoes.size() >= 15) {
-
-                                vector<int> previsoes;
-
-                                //Realiza as previsões para todos os rostos detectados para essa detecção
-                                for (int rostoIndex = 0; rostoIndex < deteccoesGlobais[dgi].deteccoes.size();rostoIndex++) {
-
-                                    Ptr <face::FaceRecognizer> lbphClassifier = face::LBPHFaceRecognizer::create();
+                            if (deteccoesGlobais[dgi].deteccoes.size() >= qtdDeDeteccoesPorCluster) {
 
 
-                                    if (filesystem::exists(modeloYml)) {
-
-                                        lbphClassifier->read(modeloYml);
-                                        int prev = lbphClassifier->predict(deteccoesGlobais[dgi].deteccoes[rostoIndex]);
-
-                                        previsoes.push_back(prev);
-                                    }
-                                }
-
-
-                                //Separa as classificações pela quantidade de vezes que elas aparecem                                
-                                vector<int> classificacoes;
-                                vector<int> qtdVezes;
-
+                                //Realiza as previsões para todos os rostos detectados para a detecção global vigente
+                                vector<int> previsoes = retornaPrevisoes(deteccoesGlobais[dgi]);
+                                                              
+                                //Separa as classificações pela quantidade de vezes que elas aparecem
+                                Recorrencia recorrencia = getRecorrenciasDeClassificacao(previsoes);
                                 
-                                for (int prevIndex = 0; prevIndex < previsoes.size();prevIndex++) {
-                                    
-                                    int qtd = 0;
-                                    bool achou = false;
-                                    bool verificou = false;
-                                    for (int subIndex = prevIndex; subIndex < previsoes.size(); subIndex++) {
-                                        
-                                        if (!verificou) {
+                                //Pega qual a classificação que mais recorrente
+                                int indexMaior = getIndexDaClassificacaoMaisRecorrente(recorrencia);
 
-                                            for (int classIndex = 0; classIndex < classificacoes.size(); classIndex++) {
+                                //Pega a pessoa na lista de pessoas cadastradas através do index/id dela                               
+                                deteccoesGlobais[dgi].pessoa = getPessoaPelaClassificacao(recorrencia, indexMaior);
 
-                                                if (classificacoes[classIndex] == previsoes[subIndex]) {
-                                                    achou = true;
-                                                }
-                                            }
-
-                                            if (!achou) {
-
-                                                classificacoes.push_back(previsoes[subIndex]);
-                                                qtd += 1;
-                                            }
-                                            
-                                            verificou = true;
-                                        }
-                                        else {
-                                            
-                                            if (previsoes[prevIndex] == previsoes[subIndex]) {
-                                                qtd += 1;
-                                            }
-                                           
-                                        }                                                                                
-                                    }                                    
-
-                                    if (!achou) {
-                                        qtdVezes.push_back(qtd);
-                                    }
-                                                                        
-                                } 
-
-                                //Pega qual a classificação que mais aparece
-                                int indexMaior = 0;
-                                int maior = 0;
-                                for (int qtdIndex = 0; qtdIndex < qtdVezes.size();qtdIndex++) {
-                                    if (qtdIndex == 0) {
-                                        maior = qtdVezes[qtdIndex];
-                                        indexMaior = qtdIndex;
-                                    }
-                                    else {
-                                        if (qtdVezes[qtdIndex] > maior) {
-                                            maior = qtdVezes[qtdIndex];
-                                            indexMaior = qtdIndex;
-                                        }
-                                    }
-                                }
-
-                                int maiorClassificacao = classificacoes[indexMaior];
-                                int confiancaClassificacao = qtdVezes[indexMaior] / 15;
+                                //Escreve o nome da pessoa em cima da detecção dela
+                                escreveNome(deteccoesGlobais[dgi],frame);                               
 
                             }
-                        }
-
-                        
+                        }                        
 
                     }
                     else {
@@ -423,7 +358,7 @@ int main()
                 }
 
 
-                imshow("Câmera", frame);
+                cv::imshow("Câmera", frame);
                 if (waitKey(5) >= 0)
                     break;
             }
@@ -504,7 +439,7 @@ int adicionaFuncionarioFile(String arquivoGravacao) {
 
         if (arquivoCadastro.is_open()) {
 
-            arquivoCadastro << "Nome:" << nome << "|" << "Id:" << idFormulario << "\n";
+            arquivoCadastro << "Id:" << idFormulario << "|" << "Nome:" << nome << "\n";
             arquivoCadastro.close();
         }
 
@@ -580,7 +515,9 @@ vector<Deteccao> deteccaoSSD(dnn::Net network, Mat frame, int tamanho, float con
             vector<cv::Mat> deteccoes;
             deteccoes.push_back(roiGrey);
 
-            struct Deteccao detec = { idDetec,frame,confianca,box,previsoes,deteccoes,-1.0,0 };
+            Pessoa pessoa = {-1,"",box,0};
+
+            struct Deteccao detec = { idDetec,frame,confianca,box,previsoes,deteccoes,pessoa,-1.0,0,false};
 
 
             idDetec += 1;
@@ -671,4 +608,231 @@ Deteccao getDeteccaoMaisProxima(vector<Deteccao> deteccoesGlobais) {
         }
     }
     return deteccaoMaisProxima;
+}
+
+
+vector<Deteccao> validaDeteccaoMaisProxima(vector<Deteccao>deteccoesGlobais,Deteccao deteccaoMaisProxima,Deteccao deteccaoAtual) {
+
+    if (deteccaoMaisProxima.distancia < 20 && deteccaoMaisProxima.distancia != -1) {
+
+        for (int dgi = 0; dgi < deteccoesGlobais.size(); dgi++) {
+
+            if (deteccoesGlobais[dgi].idDeteccao == deteccaoMaisProxima.idDeteccao) {
+
+                //Atribui o rosto a detecção que esta na lista de deteccoesGlobais
+                //E também é atualizado a posição atual do rosto
+                deteccoesGlobais[dgi].deteccoes.push_back(deteccaoMaisProxima.deteccoes[0]);                
+                deteccoesGlobais[dgi].box = deteccaoAtual.box;
+
+            }
+        }
+    }
+    else {
+
+        deteccaoMaisProxima.idDeteccao = deteccoesGlobais[deteccoesGlobais.size() - 1].idDeteccao + 1;
+        deteccoesGlobais.push_back(deteccaoMaisProxima);
+    }
+
+    return deteccoesGlobais;
+
+}
+
+
+vector<int> retornaPrevisoes(Deteccao deteccaoGlobal) {
+
+    vector<int> previsoes;
+    
+    Ptr <face::FaceRecognizer> lbphClassifier = face::LBPHFaceRecognizer::create();
+
+
+    if (filesystem::exists(modeloYml)) {
+
+        lbphClassifier->read(modeloYml);
+
+        for (int rostoIndex = 0; rostoIndex < deteccaoGlobal.deteccoes.size(); rostoIndex++) {
+                        
+            int prev = lbphClassifier->predict(deteccaoGlobal.deteccoes[rostoIndex]);
+
+            previsoes.push_back(prev);            
+        }
+
+    }
+
+    return previsoes;
+}
+
+
+Recorrencia getRecorrenciasDeClassificacao(vector<int>previsoes){
+
+    vector<int> classificacoes;
+    vector<int> qtdVezes;
+
+
+    for (int prevIndex = 0; prevIndex < previsoes.size(); prevIndex++) {
+
+        int qtd = 0;
+        bool achou = false;
+        bool verificou = false;
+        for (int subIndex = prevIndex; subIndex < previsoes.size(); subIndex++) {
+
+            if (!verificou) {
+
+                for (int classIndex = 0; classIndex < classificacoes.size(); classIndex++) {
+
+                    if (classificacoes[classIndex] == previsoes[subIndex]) {
+                        achou = true;
+                    }
+                }
+
+                if (!achou) {
+
+                    classificacoes.push_back(previsoes[subIndex]);
+                    qtd += 1;
+                }
+
+                verificou = true;
+            }
+            else {
+
+                if (previsoes[prevIndex] == previsoes[subIndex]) {
+                    qtd += 1;
+                }
+
+            }
+        }
+
+        if (!achou) {
+            qtdVezes.push_back(qtd);
+        }
+    }
+
+    Recorrencia recorrencia = { classificacoes ,qtdVezes };
+    return recorrencia;
+
+}
+
+
+int getIndexDaClassificacaoMaisRecorrente(Recorrencia recorrencia) {
+
+    int indexMaior = 0;
+    int maior = 0;
+    for (int qtdIndex = 0; qtdIndex < recorrencia.qtdVezes.size(); qtdIndex++) {
+        if (qtdIndex == 0) {
+            maior = recorrencia.qtdVezes[qtdIndex];
+            indexMaior = qtdIndex;
+        }
+        else {
+            if (recorrencia.qtdVezes[qtdIndex] > maior) {
+                maior = recorrencia.qtdVezes[qtdIndex];
+                indexMaior = qtdIndex;
+            }
+        }
+    }
+    return indexMaior;
+}
+
+
+Pessoa getPessoaPelaClassificacao(Recorrencia recorrencia, int indexMaior) {
+
+    int maiorClassificacao = recorrencia.classificacoes[indexMaior];
+    int confiancaClassificacao = recorrencia.qtdVezes[indexMaior] / qtdDeDeteccoesPorCluster;
+
+    Box box = {};
+    Pessoa pessoaEncontrada = {-1,"",box,-1};
+
+    if (confiancaClassificacao > confiancaMinimaDaPrevisao) {
+
+        if (filesystem::exists(arquivoGravacao)) {
+
+            ifstream arquivo(arquivoGravacao);
+
+            if (arquivo.is_open()) {
+
+                string linha;
+
+
+                int idPessoa = -1;
+                string nome = "";
+                bool encontrouPessoa = false;
+
+                while (getline(arquivo, linha)) {
+
+                    istringstream ss(linha);
+
+                    string parte;
+
+
+                    if (!encontrouPessoa) {
+
+                        while (getline(ss, parte, '|')) {
+
+                            //Pega o Id da pessoa
+                            if (parte.find("Id") != string::npos) {
+
+                                istringstream idParte(parte);
+                                while (getline(idParte, parte, ':')) {
+
+                                    if (parte != "Id") {
+
+                                        if (maiorClassificacao == stoi(parte)) {
+                                            idPessoa = stoi(parte);
+                                            encontrouPessoa = true;
+                                        }
+
+                                        cout << parte;
+                                    }
+                                }
+                            }
+
+                            if (encontrouPessoa) {
+
+                                //Pega o Nome da pessoa caso tenha encontrado ela pelo id
+                                if (parte.find("Nome") != string::npos) {
+
+                                    istringstream idParte(parte);
+                                    while (getline(idParte, parte, ':')) {
+
+                                        if (parte != "Nome") {
+
+                                            nome = parte;
+                                            cout << parte;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                }
+
+                Box box = {};
+
+                pessoaEncontrada.id = idPessoa;
+                pessoaEncontrada.nome = nome;
+                pessoaEncontrada.distancia = -1;
+                pessoaEncontrada.box = box;
+            }
+        } 
+        
+    }
+
+    return pessoaEncontrada;
+
+}
+
+
+void escreveNome(Deteccao deteccao, InputOutputArray frame) {
+
+    if (deteccao.pessoa.id != -1) {        
+
+        cv::putText(
+            frame,
+            deteccao.pessoa.nome,
+            Point(deteccao.box.startX, deteccao.box.startY),
+            cv::FONT_HERSHEY_DUPLEX,
+            0.7,
+            cv::Scalar(0, 255, 0),
+            2,
+            false);
+    }
 }
