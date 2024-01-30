@@ -435,18 +435,18 @@ Pessoa getPessoaPelaClassificacao(Recorrencia recorrencia, int indexMaior) {
 
                     if (!encontrouPessoa) {
 
-                        while (getline(ss, parte, '|')) {
+                        while (std::getline(ss, parte, '|')) {
 
                             //Pega o Id da pessoa
                             if (parte.find("Id") != std::string::npos) {
 
                                 std::istringstream idParte(parte);
-                                while (getline(idParte, parte, ':')) {
+                                while (std::getline(idParte, parte, ':')) {
 
                                     if (parte != "Id") {
 
-                                        if (maiorClassificacao == stoi(parte)) {
-                                            idPessoa = stoi(parte);
+                                        if (maiorClassificacao == std::stoi(parte)) {
+                                            idPessoa = std::stoi(parte);
                                             encontrouPessoa = true;
                                         }
 
