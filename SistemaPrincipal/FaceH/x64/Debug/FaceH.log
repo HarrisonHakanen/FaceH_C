@@ -1,2 +1,0 @@
-﻿  main.cpp
-C:\Users\harri\Documents\Visual studio projects\FaceH\FaceH\main.cpp(1,10): fatal  error C1083: Não é possível abrir arquivo incluir: 'opencv2/core.hpp': No such file or directory
